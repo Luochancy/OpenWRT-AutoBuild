@@ -19,6 +19,3 @@ echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.defau
 
 # 1. 修改默认IP为 10.0.100.1
 sed -i 's/192.168.1.1/10.0.100.1/g' package/base-files/files/bin/config_generate
-
-# 2. 设置默认主题为 Argon
-sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
