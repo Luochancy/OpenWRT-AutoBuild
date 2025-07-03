@@ -2,7 +2,7 @@
 # https://github.com/P3TERX/Actions-OpenWrt
 #
 # File: .github/workflows/openwrt-bulder.yml
-# Description: Build OpenWrt using GitHub Actions / 使用GitHub Actions编译OpenWrt
+# Description: Build OpenWrt using GitHub Actions
 #
 # Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
 #
@@ -29,9 +29,13 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  build:
+  initialize:
+    name: 初始化和准备源码 / Initialize and Prepare Source
     runs-on: self-hosted
-
+    outputs:
+      device-name: ${{ steps.info.outputs.device-name }}
+      file-date: ${{ steps.info.outputs.file-date }}
+      
     steps:
     - name: 检出代码 / Checkout Code
       uses: actions/checkout@main
@@ -151,7 +155,6 @@ jobs:
         echo "✅ ccache配置完成，最大缓存10GB / ccache configured with 10GB max cache"
 
     - name: 下载源码包 / Download Source Packages
-      id: package
       run: |
         echo "📥 开始下载源码包... / Starting to download source packages..."
         cd openwrt
@@ -168,6 +171,57 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
         
         echo "✅ 源码包下载完成 / Source packages download completed"
+
+    - name: 获取设备信息 / Get Device Information
+      id: info
+      run: |
+        cd openwrt
+        # 获取设备名称 / Get device name
+        DEVICE_NAME=""
+        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
+          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
+        fi
+        FILE_DATE="_$(date +"%Y%m%d%H%M")"
+        
+        echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
+        echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
+        
+        echo "✅ 设备信息获取完成 / Device information retrieved"
+        echo "📱 设备名称 / Device name: $DEVICE_NAME"
+        echo "📅 文件日期 / File date: $FILE_DATE"
+
+    - name: 缓存OpenWrt源码和配置 / Cache OpenWrt Source and Config
+      uses: actions/cache@v4
+      with:
+        path: /workdir/openwrt
+        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: |
+          openwrt-source-${{ runner.os }}-
+
+  build:
+    name: 编译固件 / Build Firmware
+    runs-on: self-hosted
+    needs: initialize
+    outputs:
+      status: ${{ steps.compile.outputs.status }}
+      compile-method: ${{ steps.compile.outputs.compile-method }}
+      firmware-path: ${{ steps.organize.outputs.firmware-path }}
+      
+    steps:
+    - name: 检出代码 / Checkout Code
+      uses: actions/checkout@main
+
+    - name: 恢复OpenWrt源码和配置 / Restore OpenWrt Source and Config
+      uses: actions/cache@v4
+      with:
+        path: /workdir/openwrt
+        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        fail-on-cache-miss: true
+
+    - name: 链接工作目录 / Link Working Directory
+      run: |
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        echo "✅ 工作目录链接完成 / Working directory linked"
 
     - name: 编译固件 / Compile Firmware
       id: compile
@@ -223,12 +277,7 @@ jobs:
         echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
         
         echo "status=success" >> $GITHUB_OUTPUT
-        echo "COMPILE_METHOD=$COMPILE_METHOD" >> $GITHUB_ENV
-        
-        # 获取设备名称 / Get device name
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        echo "compile-method=$COMPILE_METHOD" >> $GITHUB_OUTPUT
 
     - name: 检查磁盘使用情况 / Check Disk Usage
       if: (!cancelled())
@@ -244,36 +293,53 @@ jobs:
           du -sh openwrt/bin/targets/*/*/ 2>/dev/null || echo "暂无固件文件 / No firmware files yet"
         fi
 
-    - name: 上传bin目录 / Upload Bin Directory
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
-
     - name: 整理固件文件 / Organize Firmware Files
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success'
       run: |
         echo "📋 整理固件文件... / Organizing firmware files..."
         cd openwrt/bin/targets/*/*
         rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+        FIRMWARE_PATH="$PWD"
+        echo "firmware-path=$FIRMWARE_PATH" >> $GITHUB_OUTPUT
         
         echo "📁 固件文件列表 / Firmware file list:"
         ls -la
 
-    - name: 上传固件目录 / Upload Firmware Directory
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
+    - name: 上传bin目录 / Upload Bin Directory
+      uses: actions/upload-artifact@v4
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: LEDE_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        name: OpenWrt_bin${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: openwrt/bin
+
+    - name: 上传固件目录 / Upload Firmware Directory
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.firmware-path && !cancelled()
+      with:
+        name: LEDE_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ${{ steps.organize.outputs.firmware-path }}
+
+  upload:
+    name: 上传发布 / Upload and Release
+    runs-on: self-hosted
+    needs: [initialize, build]
+    if: needs.build.outputs.status == 'success' && !cancelled()
+    
+    steps:
+    - name: 检出代码 / Checkout Code
+      uses: actions/checkout@main
+
+    - name: 下载固件文件 / Download Firmware Files
+      if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: LEDE_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ./firmware
 
     - name: 生成发布标签 / Generate Release Tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true'
       run: |
         echo "🏷️ 生成发布标签... / Generating release tag..."
         RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")
@@ -281,35 +347,53 @@ jobs:
         
         # 创建发布说明 / Create release notes
         cat > release.txt << EOF
-        ## LEDE ${{ steps.tag.outputs.release_tag }}
+        ## LEDE $RELEASE_TAG
         
         **编译时间:** $(date '+%Y-%m-%d %H:%M:%S')  
-        **编译方式:** ${{ env.COMPILE_METHOD }}  
+        **编译方式:** ${{ needs.build.outputs.compile-method }}  
         **目标平台:** x86_64  
+        **设备名称:** ${{ needs.initialize.outputs.device-name }}
+        
+        ### 📋 固件文件列表 / Firmware File List
         EOF
+        
+        # 添加固件文件列表到发布说明 / Add firmware file list to release notes
+        if [ -d "./firmware" ]; then
+          echo "" >> release.txt
+          echo "| 文件名 / Filename | 大小 / Size |" >> release.txt
+          echo "|-------------------|-------------|" >> release.txt
+          cd ./firmware
+          for file in *; do
+            if [ -f "$file" ]; then
+              size=$(du -h "$file" | cut -f1)
+              echo "| $file | $size |" >> ../release.txt
+            fi
+          done
+          cd ..
+        fi
         
         echo "status=success" >> $GITHUB_OUTPUT
         
     - name: 发布固件到Release / Release Firmware to GitHub
-      uses: softprops/action-gh-release@master
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         name: "LEDE ${{ steps.tag.outputs.release_tag }}"
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        files: ./firmware/*
 
     - name: 清理工作流运行记录 / Clean Workflow Runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@v2
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
     - name: 删除旧版本Release / Remove Old Releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      uses: dev-drprasad/delete-older-releases@v0.3.4
+      if: env.UPLOAD_RELEASE == 'true'
       with:
         keep_latest: 3
         delete_tags: true
