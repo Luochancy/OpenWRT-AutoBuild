@@ -36,3 +36,6 @@ cat > package/base-files/files/etc/banner << "EOF"
                                                 __/ |
                                                |___/ 
 EOF
+
+sed -i 's/^root:[^:]*:/root::/' package/base-files/files/etc/shadow
+
