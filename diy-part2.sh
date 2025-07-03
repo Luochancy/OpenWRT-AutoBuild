@@ -21,8 +21,9 @@
 
 BUILD_DATE=$(date +"%Y%m%d%H%M")
 sed -i "s/IMG_PREFIX:=openwrt/IMG_PREFIX:=LEDE/g" include/image.mk
-# 替换生成文件名中的 efi
-sed -i "s/efi/$(date +"%Y%m%d%H%M")-efi/g" include/image.mk
+
+# 更精确的替换，只替换文件名中的efi，而不是所有的efi
+sed -i "s/\(.*\)efi\(\.img\)/\1${BUILD_DATE}-efi\2/g" include/image.mk
 
 sed -i 's/192.168.1.1/10.0.100.1/g' package/base-files/files/bin/config_generate
 
@@ -38,4 +39,3 @@ cat > package/base-files/files/etc/banner << "EOF"
 EOF
 
 sed -i 's/^root:[^:]*:/root::/' package/base-files/files/etc/shadow
-
