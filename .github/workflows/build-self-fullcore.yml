@@ -281,40 +281,15 @@ jobs:
         
         # 创建发布说明 / Create release notes
         cat > release.txt << EOF
-        🚀 **LEDE 固件编译完成 / LEDE Firmware Compilation Completed**
+        ## LEDE ${{ steps.tag.outputs.release_tag }}
         
-        📅 **编译时间 / Build Time:** $(date '+%Y-%m-%d %H:%M:%S') (UTC+8)
-        👤 **编译者 / Builder:** Luochancy
-        🔧 **CPU核心数 / CPU Cores:** $(nproc)
-        ⚡ **编译方式 / Compilation Method:** ${{ env.COMPILE_METHOD }}
-        🎯 **目标设备 / Target Device:** Generic x86_64
-        📦 **固件类型 / Firmware Type:** EXT4 + EFI
-        
-        ## 📋 包含功能 / Included Features
-        - 🌐 多种主题支持 / Multiple theme support (Argon, Design, Edge, Alpha, etc.)
-        - 📡 完整Wi-Fi驱动支持 / Complete Wi-Fi driver support
-        - 🔧 丰富的网络工具 / Rich network tools
-        - 🏠 家庭网络管理 / Home network management
-        - 🔒 安全防护功能 / Security protection features
-        
-        ## 🔧 技术规格 / Technical Specifications
-        - **内核版本 / Kernel Version:** 基于最新LEDE主线 / Based on latest LEDE mainline
-        - **编译优化 / Compilation Optimization:** 全核心+ccache / Full-core + ccache
-        - **文件系统 / File System:** EXT4
-        - **引导方式 / Boot Method:** EFI + BIOS
-        
-        ---
-        *由 GitHub Actions 自动编译 / Automatically compiled by GitHub Actions*
+        **编译时间:** $(date '+%Y-%m-%d %H:%M:%S')  
+        **编译方式:** ${{ env.COMPILE_METHOD }}  
+        **目标平台:** x86_64  
         EOF
         
-        # 添加固件大小信息 / Add firmware size information
-        if [ -d "${{ env.FIRMWARE }}" ]; then
-          FIRMWARE_SIZE=$(du -sh ${{ env.FIRMWARE }}/* 2>/dev/null | head -1 | cut -f1 || echo "未知 / Unknown")
-          echo "💾 **固件大小 / Firmware Size:** $FIRMWARE_SIZE" >> release.txt
-        fi
-        
         echo "status=success" >> $GITHUB_OUTPUT
-
+        
     - name: 发布固件到Release / Release Firmware to GitHub
       uses: softprops/action-gh-release@master
       if: steps.tag.outputs.status == 'success' && !cancelled()
@@ -322,7 +297,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
-        name: "🔥 LEDE ${{ steps.tag.outputs.release_tag }} | Luochancy编译版"
+        name: "LEDE ${{ steps.tag.outputs.release_tag }}"
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
 
