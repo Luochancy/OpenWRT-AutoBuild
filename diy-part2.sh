@@ -25,3 +25,14 @@ sed -i "s/IMG_PREFIX:=openwrt/IMG_PREFIX:=LEDE/g" include/image.mk
 sed -i "s/efi/$(date +"%Y%m%d%H%M")-efi/g" include/image.mk
 
 sed -i 's/192.168.1.1/10.0.100.1/g' package/base-files/files/bin/config_generate
+
+cat > package/base-files/files/etc/banner << "EOF"
+ _                      _                            
+| |                    | |                           
+| |    _   _  ___   ___| |__   __ _ _ __   ___ _   _ 
+| |   | | | |/ _ \ / __| '_ \ / _` | '_ \ / __| | | |
+| |___| |_| | (_) | (__| | | | (_| | | | | (__| |_| |
+\_____/\__,_|\___/ \___|_| |_|\__,_|_| |_|\___|\__, |
+                                                __/ |
+                                               |___/ 
+EOF
