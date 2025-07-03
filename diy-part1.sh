@@ -18,4 +18,4 @@ echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.defau
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 
 # 1. 修改默认IP为 10.0.100.1
-sed -i 's/192.168.1.1/10.0.100.1/g' package/base-files/files/bin/config_generate
+sed -i 's/10.0.100.1/g' package/base-files/files/bin/config_generate
