@@ -317,7 +317,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: steps.organize.outputs.firmware-path && !cancelled()
       with:
-        name: LEDE_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ${{ steps.organize.outputs.firmware-path }}
 
   upload:
@@ -334,7 +334,7 @@ jobs:
       if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
       uses: actions/download-artifact@v4
       with:
-        name: LEDE_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ./firmware
 
     - name: 生成发布标签 / Generate Release Tag
