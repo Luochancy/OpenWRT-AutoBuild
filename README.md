@@ -34,6 +34,26 @@ A template for building OpenWrt with GitHub Actions
 - [dev-drprasad/delete-older-releases](https://github.com/dev-drprasad/delete-older-releases)
 - [peter-evans/repository-dispatch](https://github.com/peter-evans/repository-dispatch)
 
+## Sysupgrade Support
+
+This configuration includes sysupgrade firmware generation support for OpenWRT. The build process will generate firmware files that can be used for online system upgrades.
+
+### Generated Files
+- `.img.gz` - Complete installation image
+- `.tar.gz` - Sysupgrade upgrade package for online updates
+- Additional platform-specific upgrade files
+
+### Usage
+1. **Web Interface**: Upload the sysupgrade file through LuCI Web Interface → System → Backup/Upgrade
+2. **Command Line**: 
+   - Standard upgrade: `sysupgrade -v firmware.bin`
+   - Keep configuration: `sysupgrade -v -c firmware.bin`
+
+### Notes
+- x86_64 platform sysupgrade support is optimized for virtual and physical hardware
+- Always backup your configuration before upgrading
+- Test without preserving configuration first for major updates
+
 ## License
 
 [MIT](https://github.com/P3TERX/Actions-OpenWrt/blob/main/LICENSE) © [**P3TERX**](https://p3terx.com)
