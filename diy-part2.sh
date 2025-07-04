@@ -39,3 +39,30 @@ cat > package/base-files/files/etc/banner << "EOF"
 EOF
 
 sed -i 's/^root:[^:]*:/root::/' package/base-files/files/etc/shadow
+
+# 确保 sysupgrade 脚本存在
+echo "配置 sysupgrade 支持..."
+
+# 创建必要的目录
+mkdir -p package/base-files/files/lib/upgrade
+
+# 添加 sysupgrade 验证脚本
+cat > package/base-files/files/lib/upgrade/platform.sh << 'EOF'
+#!/bin/sh
+
+platform_check_image() {
+    return 0
+}
+
+platform_do_upgrade() {
+    default_do_upgrade "$1"
+}
+
+platform_copy_config() {
+    return 0
+}
+EOF
+
+chmod +x package/base-files/files/lib/upgrade/platform.sh
+
+echo "sysupgrade 配置完成"
