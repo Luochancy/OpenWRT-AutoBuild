@@ -155,7 +155,7 @@ jobs:
         
         # 清理失败的下载 / Clean failed downloads
         echo "🧹 清理失败的下载文件... / Cleaning failed download files..."
-        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec ls -l {} \; 
         find dl -size -1024c -exec rm -f {} \;
         
         echo "✅ 源码包下载完成 / Source packages download completed"
@@ -184,9 +184,9 @@ jobs:
         path: |
           /workdir/openwrt
           ~/.ccache
-        key: openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-${{ github.run_id }}
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
         restore-keys: |
-          openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-
+          openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
           openwrt-source-${{ runner.os }}-
           
     - name: 清理初始化阶段临时文件 / Clean Initialize Stage Temporary Files
@@ -222,9 +222,9 @@ jobs:
         path: |
           /workdir/openwrt
           ~/.ccache
-        key: openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-${{ github.run_id }}
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
         restore-keys: |
-          openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-
+          openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
           openwrt-source-${{ runner.os }}-
         fail-on-cache-miss: false
 
