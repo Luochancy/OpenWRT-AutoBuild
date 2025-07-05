@@ -114,7 +114,14 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        make download -j8
+        
+        # 优化下载参数 / Optimize download parameters
+        CPU_CORES=$(nproc)
+        echo "⚡ 使用 $CPU_CORES 个线程下载源码包... / Using $CPU_CORES threads to download packages..."
+        make download -j$CPU_CORES
+        
+        # 清理失败的下载 / Clean failed downloads
+        echo "🧹 清理失败的下载文件... / Cleaning failed download files..."
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
@@ -187,7 +194,17 @@ jobs:
 
     - name: Check space usage
       if: (!cancelled())
-      run: df -hT
+      run: |
+        echo "💾 检查磁盘使用情况... / Checking disk usage..."
+        df -hT
+        echo ""
+        echo "📊 ccache统计信息 / ccache statistics:"
+        ccache -s 2>/dev/null || echo "ccache统计不可用 / ccache statistics unavailable"
+        echo ""
+        echo "📁 固件大小信息 / Firmware size information:"
+        if [ -d "openwrt/bin/targets" ]; then
+          du -sh openwrt/bin/targets/*/*/ 2>/dev/null || echo "暂无固件文件 / No firmware files yet"
+        fi
 
     - name: Upload bin directory
       uses: actions/upload-artifact@v4
@@ -258,9 +275,56 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+        echo "🏷️ 生成发布标签... / Generating release tag..."
+        RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")
+        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+        
+        # 获取编译方式信息 / Get compilation method info
+        COMPILE_METHOD="${{ steps.compile.outputs.compile-method }}"
+        DEVICE_NAME="${{ env.DEVICE_NAME }}"
+        TARGET_PLATFORM="x86_64"
+        BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+        
+        # 创建发布说明 / Create release notes
+        cat > release.txt << EOF
+        ## OpenWrt LEDE $RELEASE_TAG (Cloud Build)
+        
+        **编译时间 / Build Time:** $BUILD_TIME  
+        **编译方式 / Compile Method:** $COMPILE_METHOD  
+        **目标平台 / Target Platform:** $TARGET_PLATFORM  
+        **设备名称 / Device Name:** $DEVICE_NAME  
+        **运行环境 / Runner:** ubuntu-22.04
+        
+        ### 📋 固件文件列表 / Firmware File List
+        EOF
+        
+        # 添加固件文件列表到发布说明 / Add firmware file list to release notes
+        if [ -d "${{ env.FIRMWARE }}" ]; then
+          echo "" >> release.txt
+          echo "| 文件名 / Filename | 大小 / Size | 类型 / Type |" >> release.txt
+          echo "|-------------------|-------------|-------------|" >> release.txt
+          cd "${{ env.FIRMWARE }}"
+          for file in *; do
+            if [ -f "$file" ]; then
+              size=$(du -h "$file" | cut -f1)
+              # Determine file type
+              if [[ "$file" == *.img.gz ]]; then
+                type="Installation Image"
+              elif [[ "$file" == *.tar.gz ]]; then
+                type="Sysupgrade Package"
+              elif [[ "$file" == *.efi ]]; then
+                type="EFI Boot Image"
+              elif [[ "$file" == *.iso ]]; then
+                type="ISO Image"
+              else
+                type="Other"
+              fi
+              echo "| $file | $size | $type |" >> ../release.txt
+            fi
+          done
+          cd ..
+        fi
+        
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
@@ -270,6 +334,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
+        name: "OpenWrt LEDE ${{ steps.tag.outputs.release_tag }} (Cloud)"
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
 

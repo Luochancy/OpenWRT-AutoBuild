@@ -30,8 +30,11 @@ jobs:
     - name: Get Commit Hash
       id: getHash
       run: |
+        echo "🔄 检查源码更新... / Checking source code updates..."
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH .
-        echo "commitHash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+        COMMIT_HASH=$(git rev-parse HEAD)
+        echo "📝 当前提交哈希: $COMMIT_HASH / Current commit hash: $COMMIT_HASH"
+        echo "commitHash=$COMMIT_HASH" >> $GITHUB_OUTPUT
 
     - name: Compare Commit Hash
       id: cacheHash
@@ -43,7 +46,9 @@ jobs:
     - name: Save New Commit Hash
       if: steps.cacheHash.outputs.cache-hit != 'true'
       run: |
+        echo "💾 保存新的提交哈希... / Saving new commit hash..."
         echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
+        echo "✅ 检测到源码更新 / Source code update detected"
 
     - name: Trigger build
       if: steps.cacheHash.outputs.cache-hit != 'true'
@@ -51,6 +56,12 @@ jobs:
       with:
         token: ${{ github.token }}
         event-type: Source Code Update
+
+    - name: No update detected
+      if: steps.cacheHash.outputs.cache-hit == 'true'
+      run: |
+        echo "ℹ️ 没有检测到源码更新 / No source code update detected"
+        echo "📝 当前提交哈希与缓存匹配 / Current commit hash matches cache"
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@v2
