@@ -176,11 +176,36 @@ jobs:
       id: info
       run: |
         cd openwrt
-        # 获取设备名称 / Get device name
+        # 获取设备名称 / Get device name with improved logic
         DEVICE_NAME=""
-        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
-          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
+        
+        # Check for x86_64 platform specifically
+        if grep -q '^CONFIG_TARGET_x86_64=y' .config; then
+          DEVICE_NAME="_x86_64"
+          echo "🖥️ 检测到 x86_64 平台 / Detected x86_64 platform"
+        # Check for other specific device targets
+        elif grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
+          # Extract device name more precisely, avoiding false matches
+          DEVICE_LINE=$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | head -n1)
+          if [[ $DEVICE_LINE =~ CONFIG_TARGET_.*_DEVICE_(.*)=y ]]; then
+            DEVICE_NAME="_${BASH_REMATCH[1]}"
+            echo "📱 检测到设备 / Detected device: ${BASH_REMATCH[1]}"
+          fi
+        # Fallback: try to detect target architecture
+        elif grep -q '^CONFIG_TARGET_.*=y' .config; then
+          TARGET_LINE=$(grep '^CONFIG_TARGET_.*=y' .config | head -n1)
+          if [[ $TARGET_LINE =~ CONFIG_TARGET_(.*)=y ]]; then
+            DEVICE_NAME="_${BASH_REMATCH[1]}"
+            echo "🏗️ 检测到目标架构 / Detected target architecture: ${BASH_REMATCH[1]}"
+          fi
         fi
+        
+        # If still empty, use a default name
+        if [ -z "$DEVICE_NAME" ]; then
+          DEVICE_NAME="_generic"
+          echo "⚠️ 使用默认设备名称 / Using default device name"
+        fi
+        
         FILE_DATE="_$(date +"%Y%m%d%H%M")"
         
         echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
@@ -193,10 +218,26 @@ jobs:
     - name: 缓存OpenWrt源码和配置 / Cache OpenWrt Source and Config
       uses: actions/cache@v4
       with:
-        path: /workdir/openwrt
-        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        path: |
+          /workdir/openwrt
+          ~/.ccache
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
         restore-keys: |
+          openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
           openwrt-source-${{ runner.os }}-
+          
+    - name: 清理初始化阶段临时文件 / Clean Initialize Stage Temporary Files
+      run: |
+        echo "🧹 清理初始化阶段的临时文件... / Cleaning temporary files from initialization..."
+        # Clean up package caches
+        sudo apt-get clean
+        # Clean up any temporary build files but preserve source and downloads
+        if [ -d "/workdir/openwrt" ]; then
+          cd /workdir/openwrt
+          # Keep source and downloads, clean build artifacts if any
+          rm -rf tmp/ .tmp/ staging_dir/host/stamp/ 2>/dev/null || true
+        fi
+        echo "✅ 初始化清理完成 / Initialization cleanup completed"
 
   build:
     name: 编译固件 / Build Firmware
@@ -206,6 +247,7 @@ jobs:
       status: ${{ steps.compile.outputs.status }}
       compile-method: ${{ steps.compile.outputs.compile-method }}
       firmware-path: ${{ steps.organize.outputs.firmware-path }}
+      build-success: ${{ steps.compile.outputs.status == 'success' && steps.organize.outputs.firmware-path != '' }}
       
     steps:
     - name: 检出代码 / Checkout Code
@@ -214,8 +256,10 @@ jobs:
     - name: 恢复OpenWrt源码和配置 / Restore OpenWrt Source and Config
       uses: actions/cache@v4
       with:
-        path: /workdir/openwrt
-        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        path: |
+          /workdir/openwrt
+          ~/.ccache
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
         fail-on-cache-miss: true
 
     - name: 链接工作目录 / Link Working Directory
@@ -240,11 +284,16 @@ jobs:
         # 显示编译开始时间 / Show compilation start time
         echo "⏰ 编译开始时间 / Compilation start time: $(date '+%Y-%m-%d %H:%M:%S')"
         
+        # Initialize compilation status
+        COMPILE_SUCCESS=false
+        COMPILE_METHOD=""
+        
         # 第一次尝试：全核心编译 / First attempt: full-core compilation
         echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
-        if make -j$CPU_CORES V=w; then
+        if make -j$CPU_CORES V=w 2>&1 | tee compile.log; then
           echo "🎉 全核心编译成功！ / Full-core compilation successful!"
           COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
+          COMPILE_SUCCESS=true
         else
           echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
           
@@ -254,30 +303,46 @@ jobs:
             HALF_CORES=1
           fi
           echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
-          if make -j$HALF_CORES V=s; then
+          if make -j$HALF_CORES V=s 2>&1 | tee -a compile.log; then
             echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
             COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
+            COMPILE_SUCCESS=true
           else
             echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
             
             # 第三次尝试：单核心详细输出 / Third attempt: single-core verbose output
             echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
-            if make -j1 V=s; then
+            if make -j1 V=s 2>&1 | tee -a compile.log; then
               echo "✅ 单核心编译成功！ / Single-core compilation successful!"
               COMPILE_METHOD="单核心 / Single-core"
+              COMPILE_SUCCESS=true
             else
               echo "❌ 编译完全失败 / Compilation completely failed"
+              echo "📋 显示编译日志末尾 / Showing end of compilation log:"
+              tail -n 50 compile.log
               exit 1
             fi
           fi
         fi
         
-        # 显示编译完成时间 / Show compilation completion time
-        echo "⏰ 编译完成时间 / Compilation completion time: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
-        
-        echo "status=success" >> $GITHUB_OUTPUT
-        echo "compile-method=$COMPILE_METHOD" >> $GITHUB_OUTPUT
+        # Check if compilation was actually successful
+        if [ "$COMPILE_SUCCESS" = true ]; then
+          # Verify that firmware files were generated
+          if [ ! -d "bin/targets" ] || [ -z "$(find bin/targets -name '*.img*' -o -name '*.tar*' 2>/dev/null)" ]; then
+            echo "❌ 编译完成但未找到固件文件 / Compilation completed but no firmware files found"
+            exit 1
+          fi
+          
+          # 显示编译完成时间 / Show compilation completion time
+          echo "⏰ 编译完成时间 / Compilation completion time: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
+          
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "compile-method=$COMPILE_METHOD" >> $GITHUB_OUTPUT
+        else
+          echo "❌ 编译状态检查失败 / Compilation status check failed"
+          exit 1
+        fi
 
     - name: 检查磁盘使用情况 / Check Disk Usage
       if: (!cancelled())
@@ -312,6 +377,20 @@ jobs:
         
         echo "📁 固件文件列表 / Firmware file list:"
         ls -la
+        
+        # Create build info file for upload job
+        cat > build-info.json << EOF
+        {
+          "firmware_path": "$FIRMWARE_PATH",
+          "compile_method": "${{ steps.compile.outputs.compile-method }}",
+          "device_name": "${{ needs.initialize.outputs.device-name }}",
+          "file_date": "${{ needs.initialize.outputs.file-date }}",
+          "build_time": "$(date '+%Y-%m-%d %H:%M:%S')",
+          "target_platform": "x86_64"
+        }
+        EOF
+        
+        echo "✅ 固件文件整理完成 / Firmware files organized"
 
     - name: 上传bin目录 / Upload Bin Directory
       uses: actions/upload-artifact@v4
@@ -326,17 +405,31 @@ jobs:
       with:
         name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ${{ steps.organize.outputs.firmware-path }}
+        
+    - name: 上传构建信息 / Upload Build Information  
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.firmware-path && !cancelled()
+      with:
+        name: OpenWrt_build_info${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ${{ steps.organize.outputs.firmware-path }}/build-info.json
 
   upload:
     name: 上传发布 / Upload and Release
     runs-on: self-hosted
     needs: [initialize, build]
-    if: needs.build.outputs.status == 'success' && !cancelled()
+    if: needs.build.outputs.build-success == 'true' && !cancelled()
     
     steps:
     - name: 检出代码 / Checkout Code
       uses: actions/checkout@main
 
+    - name: 下载构建信息 / Download Build Information
+      if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: OpenWrt_build_info${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ./build-info
+        
     - name: 下载固件文件 / Download Firmware Files
       if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
       uses: actions/download-artifact@v4
@@ -352,14 +445,32 @@ jobs:
         RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
         
+        # Load build information if available
+        COMPILE_METHOD="${{ needs.build.outputs.compile-method }}"
+        DEVICE_NAME="${{ needs.initialize.outputs.device-name }}"
+        TARGET_PLATFORM="x86_64"
+        
+        # Read additional info from build info file if available
+        if [ -f "./build-info/build-info.json" ]; then
+          echo "📊 读取构建信息文件... / Reading build information file..."
+          if command -v jq >/dev/null 2>&1; then
+            BUILD_TIME=$(jq -r '.build_time // "$(date)"' ./build-info/build-info.json)
+            TARGET_PLATFORM=$(jq -r '.target_platform // "x86_64"' ./build-info/build-info.json)
+          else
+            BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+          fi
+        else
+          BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+        fi
+        
         # 创建发布说明 / Create release notes
         cat > release.txt << EOF
         ## LEDE $RELEASE_TAG
         
-        **编译时间:** $(date '+%Y-%m-%d %H:%M:%S')  
-        **编译方式:** ${{ needs.build.outputs.compile-method }}  
-        **目标平台:** x86_64  
-        **设备名称:** ${{ needs.initialize.outputs.device-name }}
+        **编译时间 / Build Time:** $BUILD_TIME  
+        **编译方式 / Compile Method:** $COMPILE_METHOD  
+        **目标平台 / Target Platform:** $TARGET_PLATFORM  
+        **设备名称 / Device Name:** $DEVICE_NAME
         
         ### 📋 固件文件列表 / Firmware File List
         EOF
@@ -367,17 +478,49 @@ jobs:
         # 添加固件文件列表到发布说明 / Add firmware file list to release notes
         if [ -d "./firmware" ]; then
           echo "" >> release.txt
-          echo "| 文件名 / Filename | 大小 / Size |" >> release.txt
-          echo "|-------------------|-------------|" >> release.txt
+          echo "| 文件名 / Filename | 大小 / Size | 类型 / Type |" >> release.txt
+          echo "|-------------------|-------------|-------------|" >> release.txt
           cd ./firmware
           for file in *; do
             if [ -f "$file" ]; then
               size=$(du -h "$file" | cut -f1)
-              echo "| $file | $size |" >> ../release.txt
+              # Determine file type
+              if [[ "$file" == *.img.gz ]]; then
+                type="Installation Image"
+              elif [[ "$file" == *.tar.gz ]]; then
+                type="Sysupgrade Package"
+              elif [[ "$file" == *.efi ]]; then
+                type="EFI Boot Image"
+              elif [[ "$file" == *.iso ]]; then
+                type="ISO Image"
+              else
+                type="Other"
+              fi
+              echo "| $file | $size | $type |" >> ../release.txt
             fi
           done
           cd ..
         fi
+        
+        # Add usage instructions
+        cat >> release.txt << 'EOF'
+        
+        ### 📝 使用说明 / Usage Instructions
+        
+        **安装方式 / Installation:**
+        - 全新安装：使用 `.img.gz` 文件写入硬盘或虚拟机
+        - 在线升级：使用 `.tar.gz` 文件通过 Web 界面或命令行升级
+        
+        **Sysupgrade Support:**
+        - Web界面升级：系统 → 备份/升级 → 上传 `.tar.gz` 文件
+        - 命令行升级：`sysupgrade -v firmware.tar.gz`
+        - 保留配置升级：`sysupgrade -v -c firmware.tar.gz`
+        
+        **注意事项 / Notes:**
+        - x86_64 平台支持 UEFI 和 Legacy BIOS 启动
+        - 建议在重大版本升级前备份配置
+        - 虚拟机和物理硬件均已优化支持
+        EOF
         
         echo "status=success" >> $GITHUB_OUTPUT
         
@@ -406,3 +549,13 @@ jobs:
         delete_tags: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 清理工作空间 / Clean Workspace
+      if: always()
+      run: |
+        echo "🧹 清理工作空间... / Cleaning workspace..."
+        # Clean up downloaded artifacts to save space
+        rm -rf ./firmware ./build-info release.txt 2>/dev/null || true
+        # Clean up any temporary files
+        find /tmp -name "*openwrt*" -type f -mtime +1 -delete 2>/dev/null || true
+        echo "✅ 工作空间清理完成 / Workspace cleanup completed"
