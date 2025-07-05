@@ -1,16 +1,4 @@
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-#
-# File: .github/workflows/openwrt-bulder.yml
-# Description: Build OpenWrt using GitHub Actions
-#
-# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-
-name: OpenWrt Builder For Self (Full Core)
+name: OpenWrt Builder For Self (Full Core Optimized)
 
 on:
   repository_dispatch:
@@ -141,7 +129,7 @@ jobs:
         cd openwrt
         
         # 启用ccache / Enable ccache
-        echo 'CONFIG_CCACHE=y' >> .config
+        echo \'CONFIG_CCACHE=y\' >> .config
         
         # 设置ccache目录和配置 / Setup ccache directory and configuration
         mkdir -p ~/.ccache
@@ -181,7 +169,7 @@ jobs:
         echo "🖥️ 锁定设备名称为 x86_64 / Device name locked as x86_64"
         
         # 文件日期
-        FILE_DATE="_$(date +"%Y%m%d%H%M")"
+        FILE_DATE="_$(date +\"%Y%m%d%H%M\")"
         
         echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
         echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
@@ -196,9 +184,9 @@ jobs:
         path: |
           /workdir/openwrt
           ~/.ccache
-        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-${{ github.run_id }}
         restore-keys: |
-          openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
+          openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-
           openwrt-source-${{ runner.os }}-
           
     - name: 清理初始化阶段临时文件 / Clean Initialize Stage Temporary Files
@@ -222,7 +210,7 @@ jobs:
       status: ${{ steps.compile.outputs.status }}
       compile-method: ${{ steps.compile.outputs.compile-method }}
       firmware-path: ${{ steps.organize.outputs.firmware-path }}
-      build-success: ${{ steps.compile.outputs.status == 'success' && steps.organize.outputs.firmware-path != '' }}
+      build-success: ${{ steps.compile.outputs.status == \'success\' && steps.organize.outputs.firmware-path != \'\' }}
       
     steps:
     - name: 检出代码 / Checkout Code
@@ -234,9 +222,9 @@ jobs:
         path: |
           /workdir/openwrt
           ~/.ccache
-        key: openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_id }}
+        key: openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-${{ github.run_id }}
         restore-keys: |
-          openwrt-source-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
+          openwrt-source-${{ runner.os }}-${{ hashFiles(\".config\", \"diy-part1.sh\", \"diy-part2.sh\") }}-
           openwrt-source-${{ runner.os }}-
         fail-on-cache-miss: false
 
@@ -260,61 +248,59 @@ jobs:
         export FORCE_UNSAFE_CONFIGURE=1
         
         # 显示编译开始时间 / Show compilation start time
-        echo "⏰ 编译开始时间 / Compilation start time: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "⏰ 编译开始时间 / Compilation start time: $(date \'+%Y-%m-%d %H:%M:%S\')"
         
         # Initialize compilation status
         COMPILE_SUCCESS=false
         COMPILE_METHOD=""
         
         # 第一次尝试：全核心编译 / First attempt: full-core compilation
-        echo "Test Mode"
-        make -j1 V=s
-        # echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
-        # if make -j$CPU_CORES V=w 2>&1 | tee compile.log; then
-          # echo "🎉 全核心编译成功！ / Full-core compilation successful!"
-          # COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
-          # COMPILE_SUCCESS=true
-        # else
-          # echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
+        echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
+        if make -j$CPU_CORES V=w 2>&1 | tee compile.log; then
+          echo "🎉 全核心编译成功！ / Full-core compilation successful!"
+          COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
+          COMPILE_SUCCESS=true
+        else
+          echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
           
           # 第二次尝试：使用一半核心数 / Second attempt: use half the cores
-          # HALF_CORES=$((CPU_CORES / 2))
-          # if [ $HALF_CORES -lt 1 ]; then
-            # HALF_CORES=1
-          # fi
-          # echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
-          # if make -j$HALF_CORES V=s 2>&1 | tee -a compile.log; then
-            # echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
-            # COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
-            # COMPILE_SUCCESS=true
-          # else
-            # echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
+          HALF_CORES=$((CPU_CORES / 2))
+          if [ $HALF_CORES -lt 1 ]; then
+            HALF_CORES=1
+          fi
+          echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
+          if make -j$HALF_CORES V=s 2>&1 | tee -a compile.log; then
+            echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
+            COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
+            COMPILE_SUCCESS=true
+          else
+            echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
             
             # 第三次尝试：单核心详细输出 / Third attempt: single-core verbose output
-            # echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
-            # if make -j1 V=s 2>&1 | tee -a compile.log; then
-              # echo "✅ 单核心编译成功！ / Single-core compilation successful!"
-              # COMPILE_METHOD="单核心 / Single-core"
-              # COMPILE_SUCCESS=true
-            # else
-              # echo "❌ 编译完全失败 / Compilation completely failed"
-              # echo "📋 显示编译日志末尾 / Showing end of compilation log:"
-              # tail -n 50 compile.log
-              # exit 1
-            # fi
-          # fi
-        # fi
+            echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
+            if make -j1 V=s 2>&1 | tee -a compile.log; then
+              echo "✅ 单核心编译成功！ / Single-core compilation successful!"
+              COMPILE_METHOD="单核心 / Single-core"
+              COMPILE_SUCCESS=true
+            else
+              echo "❌ 编译完全失败 / Compilation completely failed"
+              echo "📋 显示编译日志末尾 / Showing end of compilation log:"
+              tail -n 50 compile.log
+              exit 1
+            fi
+          fi
+        fi
         
         # Check if compilation was actually successful
         if [ "$COMPILE_SUCCESS" = true ]; then
           # Verify that firmware files were generated
-          if [ ! -d "bin/targets" ] || [ -z "$(find bin/targets -name '*.img*' -o -name '*.tar*' 2>/dev/null)" ]; then
+          if [ ! -d "bin/targets" ] || [ -z "$(find bin/targets -name \'*.img*\' -o -name \'*.tar*\' 2>/dev/null)" ]; then
             echo "❌ 编译完成但未找到固件文件 / Compilation completed but no firmware files found"
             exit 1
           fi
           
           # 显示编译完成时间 / Show compilation completion time
-          echo "⏰ 编译完成时间 / Compilation completion time: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "⏰ 编译完成时间 / Compilation completion time: $(date \'+%Y-%m-%d %H:%M:%S\')"
           echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
           
           echo "status=success" >> $GITHUB_OUTPUT
@@ -340,7 +326,7 @@ jobs:
 
     - name: 整理固件文件 / Organize Firmware Files
       id: organize
-      if: steps.compile.outputs.status == 'success'
+      if: steps.compile.outputs.status == \'success\'
       run: |
         echo "📋 整理固件文件... / Organizing firmware files..."
         # Find the target directory safely
@@ -396,7 +382,7 @@ jobs:
           "compile_method": "${{ steps.compile.outputs.compile-method }}",
           "device_name": "${{ needs.initialize.outputs.device-name }}",
           "file_date": "${{ needs.initialize.outputs.file-date }}",
-          "build_time": "$(date '+%Y-%m-%d %H:%M:%S')",
+          "build_time": "$(date \'+%Y-%m-%d %H:%M:%S\')",
           "target_platform": "x86_64"
         }
         EOF
@@ -405,7 +391,7 @@ jobs:
 
     - name: 上传bin目录 / Upload Bin Directory
       uses: actions/upload-artifact@v4
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      if: steps.compile.outputs.status == \'success\' && env.UPLOAD_BIN_DIR == \'true\'
       with:
         name: OpenWrt_bin${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: openwrt/bin
@@ -424,36 +410,48 @@ jobs:
         name: OpenWrt_build_info${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ${{ steps.organize.outputs.firmware-path }}/build-info.json
 
+    - name: Upload build log / 上传构建日志
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: openwrt/compile.log
+
   upload:
     name: 上传发布 / Upload and Release
     runs-on: self-hosted
     needs: [initialize, build]
-    if: needs.build.outputs.build-success == 'true' && !cancelled()
+    if: needs.build.outputs.build-success == \'true\' && !cancelled()
     
     steps:
     - name: 检出代码 / Checkout Code
       uses: actions/checkout@v4
 
     - name: 下载构建信息 / Download Build Information
-      if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
+      if: env.UPLOAD_FIRMWARE == \'true\' || env.UPLOAD_RELEASE == \'true\'
       uses: actions/download-artifact@v4
       with:
         name: OpenWrt_build_info${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ./build-info
         
     - name: 下载固件文件 / Download Firmware Files
-      if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
+      if: env.UPLOAD_FIRMWARE == \'true\' || env.UPLOAD_RELEASE == \'true\'
       uses: actions/download-artifact@v4
       with:
         name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
         path: ./firmware
 
+    - name: Download build log / 下载构建日志
+      uses: actions/download-artifact@v4
+      with:
+        name: build-log
+        path: ./build-log
+
     - name: 生成发布标签 / Generate Release Tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true'
+      if: env.UPLOAD_RELEASE == \'true\'
       run: |
         echo "🏷️ 生成发布标签... / Generating release tag..."
-        RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")
+        RELEASE_TAG=$(date +\"%Y.%m.%d-%H%M\")
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
         
         # Load build information if available
@@ -465,13 +463,13 @@ jobs:
         if [ -f "./build-info/build-info.json" ]; then
           echo "📊 读取构建信息文件... / Reading build information file..."
           if command -v jq >/dev/null 2>&1; then
-            BUILD_TIME=$(jq -r '.build_time // "$(date)"' ./build-info/build-info.json)
-            TARGET_PLATFORM=$(jq -r '.target_platform // "x86_64"' ./build-info/build-info.json)
+            BUILD_TIME=$(jq -r \'.build_time // "$(date)"\' ./build-info/build-info.json)
+            TARGET_PLATFORM=$(jq -r \'.target_platform // "x86_64"\' ./build-info/build-info.json)
           else
-            BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+            BUILD_TIME=$(date \'+%Y-%m-%d %H:%M:%S\')
           fi
         else
-          BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date \'+%Y-%m-%d %H:%M:%S\')
         fi
         
         # 创建发布说明 / Create release notes
@@ -513,11 +511,19 @@ jobs:
           cd ..
         fi
         
+        # Append build log to release body
+        if [ -f ./build-log/compile.log ]; then
+          echo "\n### 📜 构建日志 / Build Log\n" >> release.txt
+          echo "```" >> release.txt
+          cat ./build-log/compile.log >> release.txt
+          echo "```" >> release.txt
+        fi
+        
         echo "status=success" >> $GITHUB_OUTPUT
         
     - name: 发布固件到Release / Release Firmware to GitHub
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      if: steps.tag.outputs.status == \'success\' && env.UPLOAD_RELEASE == \'true\'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -534,7 +540,7 @@ jobs:
 
     - name: 删除旧版本Release / Remove Old Releases
       uses: dev-drprasad/delete-older-releases@v0.3.4
-      if: env.UPLOAD_RELEASE == 'true'
+      if: env.UPLOAD_RELEASE == \'true\'
       with:
         keep_latest: 3
         delete_tags: true
@@ -546,7 +552,7 @@ jobs:
       run: |
         echo "🧹 清理工作空间... / Cleaning workspace..."
         # Clean up downloaded artifacts to save space
-        rm -rf ./firmware ./build-info release.txt 2>/dev/null || true
+        rm -rf ./firmware ./build-info release.txt ./build-log 2>/dev/null || true
         # Clean up any temporary files
         find /tmp -name "*openwrt*" -type f -mtime +1 -delete 2>/dev/null || true
         echo "✅ 工作空间清理完成 / Workspace cleanup completed"
