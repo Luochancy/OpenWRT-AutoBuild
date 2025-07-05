@@ -533,26 +533,6 @@ jobs:
           cd ..
         fi
         
-        # Add usage instructions
-        cat >> release.txt << 'EOF'
-        
-        ### 📝 使用说明 / Usage Instructions
-        
-        **安装方式 / Installation:**
-        - 全新安装：使用 `.img.gz` 文件写入硬盘或虚拟机
-        - 在线升级：使用 `.tar.gz` 文件通过 Web 界面或命令行升级
-        
-        **Sysupgrade Support:**
-        - Web界面升级：系统 → 备份/升级 → 上传 `.tar.gz` 文件
-        - 命令行升级：`sysupgrade -v firmware.tar.gz`
-        - 保留配置升级：`sysupgrade -v -c firmware.tar.gz`
-        
-        **注意事项 / Notes:**
-        - x86_64 平台支持 UEFI 和 Legacy BIOS 启动
-        - 建议在重大版本升级前备份配置
-        - 虚拟机和物理硬件均已优化支持
-        EOF
-        
         echo "status=success" >> $GITHUB_OUTPUT
         
     - name: 发布固件到Release / Release Firmware to GitHub
