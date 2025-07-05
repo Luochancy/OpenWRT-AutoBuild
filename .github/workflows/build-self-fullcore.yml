@@ -23,7 +23,7 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: true
+  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -134,24 +134,6 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
         echo "✅ 自定义配置加载完成 / Custom configuration loaded"
-        
-    - name: 获取设备信息 / Get Device Information
-      id: info
-      run: |
-        cd openwrt
-        # 获取设备名称 / Get device name
-        DEVICE_NAME=""
-        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
-          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
-        fi
-        FILE_DATE="_$(date +"%Y%m%d%H%M")"
-        
-        echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
-        echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
-        
-        echo "✅ 设备信息获取完成 / Device information retrieved"
-        echo "📱 设备名称 / Device name: $DEVICE_NAME"
-        echo "📅 文件日期 / File date: $FILE_DATE"
 
     - name: 配置ccache编译缓存 / Configure ccache Build Cache
       run: |
@@ -189,6 +171,24 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
         
         echo "✅ 源码包下载完成 / Source packages download completed"
+
+    - name: 获取设备信息 / Get Device Information
+      id: info
+      run: |
+        cd openwrt
+        # 获取设备名称 / Get device name
+        DEVICE_NAME=""
+        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
+          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
+        fi
+        FILE_DATE="_$(date +"%Y%m%d%H%M")"
+        
+        echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
+        echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
+        
+        echo "✅ 设备信息获取完成 / Device information retrieved"
+        echo "📱 设备名称 / Device name: $DEVICE_NAME"
+        echo "📅 文件日期 / File date: $FILE_DATE"
 
     - name: 缓存OpenWrt源码和配置 / Cache OpenWrt Source and Config
       uses: actions/cache@v4
@@ -242,7 +242,7 @@ jobs:
         
         # 第一次尝试：全核心编译 / First attempt: full-core compilation
         echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
-        if make -j$CPU_CORES V=w; then
+        if make -j$CPU_CORES; then
           echo "🎉 全核心编译成功！ / Full-core compilation successful!"
           COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
         else
