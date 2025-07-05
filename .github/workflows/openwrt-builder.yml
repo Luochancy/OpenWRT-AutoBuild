@@ -10,7 +10,7 @@
 # See /LICENSE for more information.
 #
 
-name: OpenWrt Builder
+name: OpenWrt Builder (Cloud Optimized)
 
 on:
   repository_dispatch:
@@ -34,7 +34,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     - name: Initialization environment
       env:
@@ -57,6 +57,18 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+    - name: Cache OpenWrt source and packages / 缓存OpenWrt源码和包
+      uses: actions/cache@v4
+      with:
+        path: |
+          /workdir/openwrt
+          ~/.ccache
+        key: openwrt-cloud-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-${{ github.run_number }}
+        restore-keys: |
+          openwrt-cloud-${{ runner.os }}-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}-
+          openwrt-cloud-${{ runner.os }}-
+        fail-on-cache-miss: false
+
     - name: Load custom feeds
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
@@ -78,6 +90,25 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
+    - name: Configure ccache for faster builds / 配置ccache加速编译
+      run: |
+        echo "🚀 配置ccache编译缓存... / Configuring ccache build cache..."
+        cd openwrt
+        
+        # 启用ccache / Enable ccache
+        echo 'CONFIG_CCACHE=y' >> .config
+        
+        # 设置ccache目录和配置 / Setup ccache directory and configuration
+        mkdir -p ~/.ccache
+        cat > ~/.ccache/ccache.conf << EOF
+        max_size = 6G
+        compression = true
+        compression_level = 6
+        sloppiness = file_macro,locale,time_macros
+        EOF
+        
+        echo "✅ ccache配置完成，最大缓存6GB / ccache configured with 6GB max cache"
+
     - name: Download package
       id: package
       run: |
@@ -87,13 +118,69 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Compile the firmware
+    - name: Compile the firmware / 编译固件
       id: compile
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
+        
+        # 获取CPU核心数 / Get CPU core count
+        CPU_CORES=$(nproc)
+        echo "🔧 检测到 $CPU_CORES 个CPU核心 / Detected $CPU_CORES CPU cores"
+        echo "🚀 开始云端智能编译固件... / Starting cloud intelligent firmware compilation..."
+        
+        # 设置编译优化参数 / Set compilation optimization parameters
+        export MAKEFLAGS="-j$CPU_CORES"
+        export FORCE_UNSAFE_CONFIGURE=1
+        
+        # 显示编译开始时间 / Show compilation start time
+        echo "⏰ 编译开始时间 / Compilation start time: $(date '+%Y-%m-%d %H:%M:%S')"
+        
+        # Initialize compilation status
+        COMPILE_SUCCESS=false
+        COMPILE_METHOD=""
+        
+        # 第一次尝试：全核心编译 / First attempt: full-core compilation
+        echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
+        if make -j$CPU_CORES 2>&1 | tee compile.log; then
+          echo "🎉 全核心编译成功！ / Full-core compilation successful!"
+          COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
+          COMPILE_SUCCESS=true
+        else
+          echo "⚠️ 全核心编译失败，使用单核心详细模式重试... / Full-core compilation failed, retrying with single-core verbose mode..."
+          
+          # 第二次尝试：单核心详细输出 / Second attempt: single-core verbose output
+          echo "=== 🐌 第二次编译尝试：单核心详细模式 / Second compilation attempt: single-core verbose mode ==="
+          if make -j1 V=s 2>&1 | tee -a compile.log; then
+            echo "✅ 单核心编译成功！ / Single-core compilation successful!"
+            COMPILE_METHOD="单核心 / Single-core"
+            COMPILE_SUCCESS=true
+          else
+            echo "❌ 编译完全失败 / Compilation completely failed"
+            echo "📋 显示编译日志末尾 / Showing end of compilation log:"
+            tail -n 50 compile.log
+            exit 1
+          fi
+        fi
+        
+        # Check if compilation was actually successful
+        if [ "$COMPILE_SUCCESS" = true ]; then
+          # Verify that firmware files were generated
+          if [ ! -d "bin/targets" ] || [ -z "$(find bin/targets -name '*.img*' -o -name '*.tar*' 2>/dev/null)" ]; then
+            echo "❌ 编译完成但未找到固件文件 / Compilation completed but no firmware files found"
+            exit 1
+          fi
+          
+          # 显示编译完成时间 / Show compilation completion time
+          echo "⏰ 编译完成时间 / Compilation completion time: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
+          
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "compile-method=$COMPILE_METHOD" >> $GITHUB_OUTPUT
+        else
+          echo "❌ 编译状态检查失败 / Compilation status check failed"
+          exit 1
+        fi
+        
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
@@ -103,7 +190,7 @@ jobs:
       run: df -hT
 
     - name: Upload bin directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -161,7 +248,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -177,7 +264,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -187,13 +274,13 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@v2
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
     - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@master
+      uses: dev-drprasad/delete-older-releases@v0.3.4
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
         keep_latest: 3
