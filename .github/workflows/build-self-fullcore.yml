@@ -1,4 +1,16 @@
-name: OpenWrt Builder For Self（Full Core）
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+#
+# File: .github/workflows/openwrt-bulder.yml
+# Description: Build OpenWrt using GitHub Actions
+#
+# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+
+name: OpenWrt Builder For Self (Full Core)
 
 on:
   repository_dispatch:
@@ -17,188 +29,371 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  build:
-    name: Build OpenWrt Firmware | 构建OpenWrt固件
+  initialize:
+    name: 初始化和准备源码 / Initialize and Prepare Source
     runs-on: self-hosted
     outputs:
-      firmware_dir: ${{ steps.organize.outputs.firmware_dir }}
-      device_name: ${{ steps.device.outputs.device_name }}
-      file_date: ${{ steps.device.outputs.file_date }}
-      firmware_info: ${{ steps.fwinfo.outputs.firmware_info }}
-
+      device-name: ${{ steps.info.outputs.device-name }}
+      file-date: ${{ steps.info.outputs.file-date }}
+      
     steps:
-    - name: Checkout | 检出代码
+    - name: 检出代码 / Checkout Code
       uses: actions/checkout@main
 
-    - name: Initialization environment | 初始化环境
+    - name: 初始化编译环境 / Initialize Build Environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        CORES=$(nproc)
-        MEM=$(free -h | awk '/Mem:/ {print $2}')
-        echo "💡 Build host: $CORES cores, $MEM RAM | 构建主机：$CORES核CPU，$MEM内存"
+        echo "🚀 开始初始化编译环境... / Starting environment initialization..."
+        
+        # 清理磁盘空间 / Clean disk space
+        echo "🧹 清理磁盘空间... / Cleaning disk space..."
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /workdir/openwrt
         sudo docker image prune --all --force
+        sudo apt-get clean
+        
+        # 更新软件包列表 / Update package lists
+        echo "📦 更新软件包列表... / Updating package lists..."
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        
+        # 安装编译依赖 / Install build dependencies
+        echo "⚙️ 安装编译依赖包... / Installing build dependencies..."
+        sudo -E apt-get -qq install -y --no-install-recommends \
+          ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
+          gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
+          libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+          libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+          libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch \
+          pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils \
+          rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
+          vim wget xmlto xxd zlib1g-dev
+        
+        # 清理不必要的包 / Clean unnecessary packages
+        echo "🗑️ 清理不必要的包... / Cleaning unnecessary packages..."
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
+        
+        # 设置时区 / Set timezone
         sudo timedatectl set-timezone "$TZ"
+        
+        # 创建工作目录 / Create working directory
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
+        
+        # 配置编译优化环境变量 / Configure build optimization environment variables
+        echo "⚡ 配置编译优化参数... / Configuring build optimization parameters..."
+        CPU_CORES=$(nproc)
+        echo "MAKEFLAGS=-j$CPU_CORES" >> $GITHUB_ENV
+        echo "FORCE_UNSAFE_CONFIGURE=1" >> $GITHUB_ENV
+        echo "✅ 检测到 $CPU_CORES 个CPU核心 / Detected $CPU_CORES CPU cores"
 
-    - name: Clone source code | 克隆源码
+    - name: 克隆源代码 / Clone Source Code
       working-directory: /workdir
       run: |
+        echo "📥 开始克隆LEDE源代码... / Starting to clone LEDE source code..."
         df -hT $PWD
+        
+        # 使用浅克隆加速下载 / Use shallow clone for faster download
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        
+        echo "✅ 源代码克隆完成 / Source code cloning completed"
 
-    - name: Load custom feeds | 加载自定义feeds
+    - name: 加载自定义feeds / Load Custom Feeds
       run: |
+        echo "📋 加载自定义feeds配置... / Loading custom feeds configuration..."
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
+        echo "✅ 自定义feeds配置完成 / Custom feeds configuration completed"
 
-    - name: Update feeds | 更新feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds | 安装feeds
-      run: cd openwrt && ./scripts/feeds install -a
-
-    - name: Load custom configuration | 加载自定义配置
+    - name: 更新feeds / Update Feeds
       run: |
+        echo "🔄 开始更新feeds... / Starting to update feeds..."
+        cd openwrt
+        # 并行更新feeds / Parallel update feeds
+        ./scripts/feeds update -a -j$(nproc)
+        echo "✅ Feeds更新完成 / Feeds update completed"
+
+    - name: 安装feeds / Install Feeds
+      run: |
+        echo "📦 开始安装feeds... / Starting to install feeds..."
+        cd openwrt
+        # 并行安装feeds / Parallel install feeds
+        ./scripts/feeds install -a -j$(nproc)
+        echo "✅ Feeds安装完成 / Feeds installation completed"
+
+    - name: 加载自定义配置 / Load Custom Configuration
+      run: |
+        echo "⚙️ 加载自定义配置... / Loading custom configuration..."
         [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
+        echo "✅ 自定义配置加载完成 / Custom configuration loaded"
 
-    - name: Download package | 下载包
-      id: package
+    - name: 配置ccache编译缓存 / Configure ccache Build Cache
       run: |
+        echo "🚀 配置ccache编译缓存... / Configuring ccache build cache..."
+        cd openwrt
+        
+        # 启用ccache / Enable ccache
+        echo 'CONFIG_CCACHE=y' >> .config
+        
+        # 设置ccache目录和配置 / Setup ccache directory and configuration
+        mkdir -p ~/.ccache
+        cat > ~/.ccache/ccache.conf << EOF
+        max_size = 10G
+        compression = true
+        compression_level = 6
+        sloppiness = file_macro,locale,time_macros
+        EOF
+        
+        echo "✅ ccache配置完成，最大缓存10GB / ccache configured with 10GB max cache"
+
+    - name: 下载源码包 / Download Source Packages
+      run: |
+        echo "📥 开始下载源码包... / Starting to download source packages..."
         cd openwrt
         make defconfig
-        CORES=$(nproc)
-        echo "📦 Downloading packages with $CORES threads | 使用$CORES线程下载包"
-        make download -j$CORES
+        
+        # 使用最大并行数下载 / Use maximum parallelism for download
+        CPU_CORES=$(nproc)
+        echo "⚡ 使用 $CPU_CORES 个线程下载源码包... / Using $CPU_CORES threads to download packages..."
+        make download -j$CPU_CORES
+        
+        # 清理失败的下载 / Clean failed downloads
+        echo "🧹 清理失败的下载文件... / Cleaning failed download files..."
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
+        
+        echo "✅ 源码包下载完成 / Source packages download completed"
 
-    - name: Compile the firmware (full core) | 全核心编译固件
+    - name: 获取设备信息 / Get Device Information
+      id: info
+      run: |
+        cd openwrt
+        # 获取设备名称 / Get device name
+        DEVICE_NAME=""
+        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
+          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
+        fi
+        FILE_DATE="_$(date +"%Y%m%d%H%M")"
+        
+        echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
+        echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
+        
+        echo "✅ 设备信息获取完成 / Device information retrieved"
+        echo "📱 设备名称 / Device name: $DEVICE_NAME"
+        echo "📅 文件日期 / File date: $FILE_DATE"
+
+    - name: 缓存OpenWrt源码和配置 / Cache OpenWrt Source and Config
+      uses: actions/cache@v4
+      with:
+        path: /workdir/openwrt
+        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: |
+          openwrt-source-${{ runner.os }}-
+
+  build:
+    name: 编译固件 / Build Firmware
+    runs-on: self-hosted
+    needs: initialize
+    outputs:
+      status: ${{ steps.compile.outputs.status }}
+      compile-method: ${{ steps.compile.outputs.compile-method }}
+      firmware-path: ${{ steps.organize.outputs.firmware-path }}
+      
+    steps:
+    - name: 检出代码 / Checkout Code
+      uses: actions/checkout@main
+
+    - name: 恢复OpenWrt源码和配置 / Restore OpenWrt Source and Config
+      uses: actions/cache@v4
+      with:
+        path: /workdir/openwrt
+        key: openwrt-source-${{ runner.os }}-${{ github.run_id }}
+        fail-on-cache-miss: true
+
+    - name: 链接工作目录 / Link Working Directory
+      run: |
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        echo "✅ 工作目录链接完成 / Working directory linked"
+
+    - name: 编译固件 / Compile Firmware
       id: compile
       run: |
         cd openwrt
-        CORES=$(nproc)
-        echo "🚀 Using $CORES threads (detected by nproc) for compilation | 使用$CORES线程(自动检测)全核心编译"
-        make -j$CORES || make -j1 V=s
-
-    - name: Get device name and file date | 获取设备名和日期
-      id: device
-      run: |
-        cd openwrt
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "device_name=_$(cat DEVICE_NAME)" >> $GITHUB_OUTPUT || echo "device_name=" >> $GITHUB_OUTPUT
-        echo "file_date=_$(date +"%Y%m%d%H%M")" >> $GITHUB_OUTPUT
-
-    - name: Organize Firmware Files | 整理固件文件
-      id: organize
-      run: |
-        echo "📋 Organizing firmware files..."
-        echo "📋 整理固件文件..."
-        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n 1)
-        if [ -z "$TARGET_DIR" ]; then
-          echo "Error: No target directory found in openwrt/bin/targets"
-          echo "错误：未在 openwrt/bin/targets 中找到目标目录"
-          exit 1
+        
+        # 获取CPU核心数 / Get CPU core count
+        CPU_CORES=$(nproc)
+        echo "🔧 检测到 $CPU_CORES 个CPU核心 / Detected $CPU_CORES CPU cores"
+        echo "🚀 开始全核心编译固件... / Starting full-core firmware compilation..."
+        
+        # 设置编译优化参数 / Set compilation optimization parameters
+        export MAKEFLAGS="-j$CPU_CORES"
+        export FORCE_UNSAFE_CONFIGURE=1
+        
+        # 显示编译开始时间 / Show compilation start time
+        echo "⏰ 编译开始时间 / Compilation start time: $(date '+%Y-%m-%d %H:%M:%S')"
+        
+        # 第一次尝试：全核心编译 / First attempt: full-core compilation
+        echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
+        if make -j$CPU_CORES V=w; then
+          echo "🎉 全核心编译成功！ / Full-core compilation successful!"
+          COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
+        else
+          echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
+          
+          # 第二次尝试：使用一半核心数 / Second attempt: use half the cores
+          HALF_CORES=$((CPU_CORES / 2))
+          if [ $HALF_CORES -lt 1 ]; then
+            HALF_CORES=1
+          fi
+          echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
+          if make -j$HALF_CORES V=s; then
+            echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
+            COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
+          else
+            echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
+            
+            # 第三次尝试：单核心详细输出 / Third attempt: single-core verbose output
+            echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
+            if make -j1 V=s; then
+              echo "✅ 单核心编译成功！ / Single-core compilation successful!"
+              COMPILE_METHOD="单核心 / Single-core"
+            else
+              echo "❌ 编译完全失败 / Compilation completely failed"
+              exit 1
+            fi
+          fi
         fi
-        cd "$TARGET_DIR"
-        rm -rf packages
-        TS=$(date +%s)
-        for file in openwrt-*; do
-          if [ -f "$file" ]; then
-            new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TS}-/")
-            [ "$file" != "$new_name" ] && mv "$file" "$new_name"
-          fi
-        done
-        echo "firmware_dir=$PWD" >> $GITHUB_OUTPUT
+        
+        # 显示编译完成时间 / Show compilation completion time
+        echo "⏰ 编译完成时间 / Compilation completion time: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "🎯 编译方式 / Compilation method: $COMPILE_METHOD"
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "compile-method=$COMPILE_METHOD" >> $GITHUB_OUTPUT
 
-    - name: Collect firmware info | 收集固件信息
-      id: fwinfo
+    - name: 检查磁盘使用情况 / Check Disk Usage
+      if: (!cancelled())
       run: |
-        cd ${{ steps.organize.outputs.firmware_dir }}
-        echo "| 文件名 (Filename) | 类型 (Type) | 大小 (Size) | SHA256 |" > firmware_info.md
-        echo "| --- | --- | --- | --- |" >> firmware_info.md
-        for f in *; do
-          if [ -f "$f" ]; then
-            TYPE=$(file -b "$f" | head -n1)
-            SIZE=$(du -h "$f" | awk '{print $1}')
-            SHA256=$(sha256sum "$f" | awk '{print $1}')
-            echo "| $f | $TYPE | $SIZE | $SHA256 |" >> firmware_info.md
-          fi
-        done
-        cat firmware_info.md
-        echo "firmware_info=$PWD/firmware_info.md" >> $GITHUB_OUTPUT
+        echo "💾 检查磁盘使用情况... / Checking disk usage..."
+        df -hT
+        echo ""
+        echo "📊 ccache统计信息 / ccache statistics:"
+        ccache -s
+        echo ""
+        echo "📁 固件大小信息 / Firmware size information:"
+        if [ -d "openwrt/bin/targets" ]; then
+          du -sh openwrt/bin/targets/*/*/ 2>/dev/null || echo "暂无固件文件 / No firmware files yet"
+        fi
 
-    - name: Upload firmware artifact | 上传固件产物
-      uses: actions/upload-artifact@main
-      if: env.UPLOAD_FIRMWARE == 'true'
+    - name: 整理固件文件 / Organize Firmware Files
+      id: organize
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        echo "📋 整理固件文件... / Organizing firmware files..."
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        FIRMWARE_PATH="$PWD"
+        echo "firmware-path=$FIRMWARE_PATH" >> $GITHUB_OUTPUT
+        
+        echo "📁 固件文件列表 / Firmware file list:"
+        ls -la
+
+    - name: 上传bin目录 / Upload Bin Directory
+      uses: actions/upload-artifact@v4
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: OpenWrt_firmware${{ steps.device.outputs.device_name }}${{ steps.device.outputs.file_date }}
-        path: |
-          ${{ steps.organize.outputs.firmware_dir }}/*
-          ${{ steps.fwinfo.outputs.firmware_info }}
+        name: OpenWrt_bin${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: openwrt/bin
+
+    - name: 上传固件目录 / Upload Firmware Directory
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.firmware-path && !cancelled()
+      with:
+        name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ${{ steps.organize.outputs.firmware-path }}
 
   upload:
-    name: Upload & Release | 上传和发布
-    needs: build
+    name: 上传发布 / Upload and Release
     runs-on: self-hosted
-    if: ${{ needs.build.outputs.firmware_dir != '' }}
+    needs: [initialize, build]
+    if: needs.build.outputs.status == 'success' && !cancelled()
+    
     steps:
-    - name: Download firmware artifact | 下载固件产物
-      uses: actions/download-artifact@main
+    - name: 检出代码 / Checkout Code
+      uses: actions/checkout@main
+
+    - name: 下载固件文件 / Download Firmware Files
+      if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
+      uses: actions/download-artifact@v4
       with:
-        name: OpenWrt_firmware${{ needs.build.outputs.device_name }}${{ needs.build.outputs.file_date }}
-        path: firmware
+        name: OpenWrt_firmware${{ needs.initialize.outputs.device-name }}${{ needs.initialize.outputs.file-date }}
+        path: ./firmware
 
-    - name: Read firmware info | 读取固件信息
-      id: readinfo
-      run: |
-        cat firmware/firmware_info.md
-        echo "fwinfo_md=$(cat firmware/firmware_info.md | base64 -w0)" >> $GITHUB_OUTPUT
-
-    - name: Generate release tag | 生成发布标签
+    - name: 生成发布标签 / Generate Release Tag
       id: tag
+      if: env.UPLOAD_RELEASE == 'true'
       run: |
-        echo "release_tag=LEDE-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-
-    - name: Upload firmware to release | 上传固件到发布页
-      uses: softprops/action-gh-release@master
+        echo "🏷️ 生成发布标签... / Generating release tag..."
+        RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")
+        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+        
+        # 创建发布说明 / Create release notes
+        cat > release.txt << EOF
+        ## LEDE $RELEASE_TAG
+        
+        **编译时间:** $(date '+%Y-%m-%d %H:%M:%S')  
+        **编译方式:** ${{ needs.build.outputs.compile-method }}  
+        **目标平台:** x86_64  
+        **设备名称:** ${{ needs.initialize.outputs.device-name }}
+        
+        ### 📋 固件文件列表 / Firmware File List
+        EOF
+        
+        # 添加固件文件列表到发布说明 / Add firmware file list to release notes
+        if [ -d "./firmware" ]; then
+          echo "" >> release.txt
+          echo "| 文件名 / Filename | 大小 / Size |" >> release.txt
+          echo "|-------------------|-------------|" >> release.txt
+          cd ./firmware
+          for file in *; do
+            if [ -f "$file" ]; then
+              size=$(du -h "$file" | cut -f1)
+              echo "| $file | $size |" >> ../release.txt
+            fi
+          done
+          cd ..
+        fi
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        
+    - name: 发布固件到Release / Release Firmware to GitHub
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
-        body: |
-          ## 固件文件列表 (Firmware File List)
+        name: "LEDE ${{ steps.tag.outputs.release_tag }}"
+        body_path: release.txt
+        files: ./firmware/*
 
-          > 文件名、类型、大小、SHA256 校验值信息如下：  
-          > Below are filename, type, size and SHA256 checksum of this build.
-
-          ${{ steps.readinfo.outputs.fwinfo_md }}
-
-        files: firmware/*
-        name: ${{ steps.tag.outputs.release_tag }}
-
-    - name: Delete workflow runs | 删除旧工作流
-      uses: Mattraks/delete-workflow-runs@main
+    - name: 清理工作流运行记录 / Clean Workflow Runs
+      uses: Mattraks/delete-workflow-runs@v2
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
-    - name: Remove old Releases | 删除旧发布
-      uses: dev-drprasad/delete-older-releases@master
+    - name: 删除旧版本Release / Remove Old Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.4
+      if: env.UPLOAD_RELEASE == 'true'
       with:
         keep_latest: 3
         delete_tags: true
