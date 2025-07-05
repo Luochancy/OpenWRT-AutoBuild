@@ -19,11 +19,11 @@
 # Modify hostname
 #sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
 
-BUILD_DATE=$(date +"%Y%m%d%H%M")
-sed -i "s/IMG_PREFIX:=openwrt/IMG_PREFIX:=LEDE/g" include/image.mk
+# BUILD_DATE=$(date +"%Y%m%d%H%M")
+# sed -i "s/IMG_PREFIX:=openwrt/IMG_PREFIX:=LEDE/g" include/image.mk
 
 # 更精确的替换，只替换文件名中的efi，而不是所有的efi
-sed -i "s/\(.*\)efi\(\.img\)/\1${BUILD_DATE}-efi\2/g" include/image.mk
+# sed -i "s/\(.*\)efi\(\.img\)/\1${BUILD_DATE}-efi\2/g" include/image.mk
 
 # 修改固件版本信息 / Modify firmware version information
 echo "🏷️ 修改固件版本信息 / Modifying firmware version information..."
