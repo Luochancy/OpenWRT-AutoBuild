@@ -267,41 +267,43 @@ jobs:
         COMPILE_METHOD=""
         
         # 第一次尝试：全核心编译 / First attempt: full-core compilation
-        echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
-        if make -j$CPU_CORES V=w 2>&1 | tee compile.log; then
-          echo "🎉 全核心编译成功！ / Full-core compilation successful!"
-          COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
-          COMPILE_SUCCESS=true
-        else
-          echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
+        echo "Test Mode"
+        make -j1 V=s
+        # echo "=== 🔥 第一次编译尝试：使用 $CPU_CORES 个核心 / First compilation attempt: using $CPU_CORES cores ==="
+        # if make -j$CPU_CORES V=w 2>&1 | tee compile.log; then
+          # echo "🎉 全核心编译成功！ / Full-core compilation successful!"
+          # COMPILE_METHOD="全核心 / Full-core ($CPU_CORES cores)"
+          # COMPILE_SUCCESS=true
+        # else
+          # echo "⚠️ 全核心编译失败，尝试减少并行数... / Full-core compilation failed, trying with reduced parallelism..."
           
           # 第二次尝试：使用一半核心数 / Second attempt: use half the cores
-          HALF_CORES=$((CPU_CORES / 2))
-          if [ $HALF_CORES -lt 1 ]; then
-            HALF_CORES=1
-          fi
-          echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
-          if make -j$HALF_CORES V=s 2>&1 | tee -a compile.log; then
-            echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
-            COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
-            COMPILE_SUCCESS=true
-          else
-            echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
+          # HALF_CORES=$((CPU_CORES / 2))
+          # if [ $HALF_CORES -lt 1 ]; then
+            # HALF_CORES=1
+          # fi
+          # echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
+          # if make -j$HALF_CORES V=s 2>&1 | tee -a compile.log; then
+            # echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
+            # COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
+            # COMPILE_SUCCESS=true
+          # else
+            # echo "⚠️ 减少并行数编译失败，使用单核心详细模式... / Reduced parallelism failed, using single-core verbose mode..."
             
             # 第三次尝试：单核心详细输出 / Third attempt: single-core verbose output
-            echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
-            if make -j1 V=s 2>&1 | tee -a compile.log; then
-              echo "✅ 单核心编译成功！ / Single-core compilation successful!"
-              COMPILE_METHOD="单核心 / Single-core"
-              COMPILE_SUCCESS=true
-            else
-              echo "❌ 编译完全失败 / Compilation completely failed"
-              echo "📋 显示编译日志末尾 / Showing end of compilation log:"
-              tail -n 50 compile.log
-              exit 1
-            fi
-          fi
-        fi
+            # echo "=== 🐌 第三次编译尝试：单核心详细模式 / Third compilation attempt: single-core verbose mode ==="
+            # if make -j1 V=s 2>&1 | tee -a compile.log; then
+              # echo "✅ 单核心编译成功！ / Single-core compilation successful!"
+              # COMPILE_METHOD="单核心 / Single-core"
+              # COMPILE_SUCCESS=true
+            # else
+              # echo "❌ 编译完全失败 / Compilation completely failed"
+              # echo "📋 显示编译日志末尾 / Showing end of compilation log:"
+              # tail -n 50 compile.log
+              # exit 1
+            # fi
+          # fi
+        # fi
         
         # Check if compilation was actually successful
         if [ "$COMPILE_SUCCESS" = true ]; then
