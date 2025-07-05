@@ -372,10 +372,41 @@ jobs:
         echo "Found target directory: $TARGET_DIR"
         cd "$TARGET_DIR"
         rm -rf packages
+        
+        # Generate timestamp for filename modification
+        TIMESTAMP=$(date +%s)
+        echo "⏰ 生成时间戳: $TIMESTAMP / Generated timestamp: $TIMESTAMP"
+        
+        # Rename firmware files to include timestamp
+        echo "🔄 重命名固件文件添加时间戳... / Renaming firmware files with timestamp..."
+        for file in *; do
+          if [ -f "$file" ]; then
+            # Extract file extension
+            if [[ "$file" == *.img.gz ]]; then
+              # For .img.gz files: openwrt-xxx.img.gz -> openwrt-timestamp-xxx.img.gz
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            elif [[ "$file" == *.tar.gz ]]; then
+              # For .tar.gz files: openwrt-xxx.tar.gz -> openwrt-timestamp-xxx.tar.gz
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            elif [[ "$file" == openwrt-* ]]; then
+              # For other openwrt files
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            else
+              # Keep original name for non-openwrt files
+              new_name="$file"
+            fi
+            
+            if [ "$file" != "$new_name" ]; then
+              mv "$file" "$new_name"
+              echo "✅ $file -> $new_name"
+            fi
+          fi
+        done
+        
         FIRMWARE_PATH="$PWD"
         echo "firmware-path=$FIRMWARE_PATH" >> $GITHUB_OUTPUT
         
-        echo "📁 固件文件列表 / Firmware file list:"
+        echo "📁 重命名后的固件文件列表 / Renamed firmware file list:"
         ls -la
         
         # Create build info file for upload job

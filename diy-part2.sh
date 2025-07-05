@@ -25,6 +25,40 @@ sed -i "s/IMG_PREFIX:=openwrt/IMG_PREFIX:=LEDE/g" include/image.mk
 # 更精确的替换，只替换文件名中的efi，而不是所有的efi
 sed -i "s/\(.*\)efi\(\.img\)/\1${BUILD_DATE}-efi\2/g" include/image.mk
 
+# 修改固件版本信息 / Modify firmware version information
+echo "🏷️ 修改固件版本信息 / Modifying firmware version information..."
+
+# 方法1: 修改版本文件
+if [ -f "package/base-files/files/etc/openwrt_release" ]; then
+    sed -i "s/DISTRIB_DESCRIPTION=.*/DISTRIB_DESCRIPTION='OpenWRT-LEDE MINI 2025.v1 Compiled by Luochancy'/" package/base-files/files/etc/openwrt_release
+fi
+
+# 方法2: 通过修改 include/version.mk 来改变版本信息
+if [ -f "include/version.mk" ]; then
+    # 修改版本描述
+    sed -i "s/RELEASE:=.*/RELEASE:=OpenWRT-LEDE MINI 2025.v1/" include/version.mk
+    sed -i "s/VERSION_REPO:=.*/VERSION_REPO:=Compiled by Luochancy/" include/version.mk
+fi
+
+# 方法3: 直接在 package/base-files 中创建版本文件
+mkdir -p package/base-files/files/etc
+cat > package/base-files/files/etc/openwrt_release << 'EOF'
+DISTRIB_ID='OpenWrt'
+DISTRIB_RELEASE='OpenWRT-LEDE MINI 2025.v1'
+DISTRIB_REVISION='Compiled by Luochancy'
+DISTRIB_TARGET='x86/64'
+DISTRIB_ARCH='x86_64'
+DISTRIB_DESCRIPTION='OpenWRT-LEDE MINI 2025.v1 Compiled by Luochancy'
+DISTRIB_TAINTS=''
+EOF
+
+# 方法4: 修改 config/Config-build.in 中的默认版本
+if [ -f "config/Config-build.in" ]; then
+    sed -i 's/default ".*"/default "OpenWRT-LEDE MINI 2025.v1 Compiled by Luochancy"/' config/Config-build.in
+fi
+
+echo "✅ 固件版本信息修改完成 / Firmware version information modified"
+
 sed -i 's/192.168.1.1/10.0.100.1/g' package/base-files/files/bin/config_generate
 
 cat > package/base-files/files/etc/banner << "EOF"
