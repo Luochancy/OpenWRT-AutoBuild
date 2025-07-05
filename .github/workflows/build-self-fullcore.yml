@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
@@ -339,7 +339,7 @@ jobs:
         
         # 创建发布说明 / Create release notes
         cat > release.txt << EOF
-        ## LEDE $RELEASE_TAG
+        ## ImmortalWRT $RELEASE_TAG
         
         **编译时间:** $(date '+%Y-%m-%d %H:%M:%S')  
         **编译方式:** ${{ needs.build.outputs.compile-method }}  
@@ -373,7 +373,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
-        name: "LEDE ${{ steps.tag.outputs.release_tag }}"
+        name: "ImmortalWRT ${{ steps.tag.outputs.release_tag }}"
         body_path: release.txt
         files: ./firmware/*
 
