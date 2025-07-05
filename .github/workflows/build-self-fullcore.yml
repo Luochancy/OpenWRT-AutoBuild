@@ -175,21 +175,13 @@ jobs:
     - name: 获取设备信息 / Get Device Information
       id: info
       run: |
-        cd openwrt
-        # 获取设备名称 / Get device name
-        DEVICE_NAME=""
-        if grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
-          DEVICE_NAME="_$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')"
-        fi
+        DEVICE_NAME="_generic"
         FILE_DATE="_$(date +"%Y%m%d%H%M")"
-        
         echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
         echo "file-date=$FILE_DATE" >> $GITHUB_OUTPUT
-        
         echo "✅ 设备信息获取完成 / Device information retrieved"
         echo "📱 设备名称 / Device name: $DEVICE_NAME"
         echo "📅 文件日期 / File date: $FILE_DATE"
-
     - name: 缓存OpenWrt源码和配置 / Cache OpenWrt Source and Config
       uses: actions/cache@v4
       with:
