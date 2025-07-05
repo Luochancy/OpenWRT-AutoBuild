@@ -298,7 +298,14 @@ jobs:
       if: steps.compile.outputs.status == 'success'
       run: |
         echo "📋 整理固件文件... / Organizing firmware files..."
-        cd openwrt/bin/targets/*/*
+        # Find the target directory safely
+        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n 1)
+        if [ -z "$TARGET_DIR" ]; then
+          echo "Error: No target directory found in openwrt/bin/targets"
+          exit 1
+        fi
+        echo "Found target directory: $TARGET_DIR"
+        cd "$TARGET_DIR"
         rm -rf packages
         FIRMWARE_PATH="$PWD"
         echo "firmware-path=$FIRMWARE_PATH" >> $GITHUB_OUTPUT
