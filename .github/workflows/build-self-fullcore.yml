@@ -176,36 +176,11 @@ jobs:
       id: info
       run: |
         cd openwrt
-        # 获取设备名称 / Get device name with improved logic
-        DEVICE_NAME=""
+        # 锁定设备名称为 x86_64
+        DEVICE_NAME="_x86_64"
+        echo "🖥️ 锁定设备名称为 x86_64 / Device name locked as x86_64"
         
-        # Check for x86_64 platform specifically
-        if grep -q '^CONFIG_TARGET_x86_64=y' .config; then
-          DEVICE_NAME="_x86_64"
-          echo "🖥️ 检测到 x86_64 平台 / Detected x86_64 platform"
-        # Check for other specific device targets
-        elif grep -q '^CONFIG_TARGET.*DEVICE.*=y' .config; then
-          # Extract device name more precisely, avoiding false matches
-          DEVICE_LINE=$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | head -n1)
-          if [[ $DEVICE_LINE =~ CONFIG_TARGET_.*_DEVICE_(.*)=y ]]; then
-            DEVICE_NAME="_${BASH_REMATCH[1]}"
-            echo "📱 检测到设备 / Detected device: ${BASH_REMATCH[1]}"
-          fi
-        # Fallback: try to detect target architecture
-        elif grep -q '^CONFIG_TARGET_.*=y' .config; then
-          TARGET_LINE=$(grep '^CONFIG_TARGET_.*=y' .config | head -n1)
-          if [[ $TARGET_LINE =~ CONFIG_TARGET_(.*)=y ]]; then
-            DEVICE_NAME="_${BASH_REMATCH[1]}"
-            echo "🏗️ 检测到目标架构 / Detected target architecture: ${BASH_REMATCH[1]}"
-          fi
-        fi
-        
-        # If still empty, use a default name
-        if [ -z "$DEVICE_NAME" ]; then
-          DEVICE_NAME="_generic"
-          echo "⚠️ 使用默认设备名称 / Using default device name"
-        fi
-        
+        # 文件日期
         FILE_DATE="_$(date +"%Y%m%d%H%M")"
         
         echo "device-name=$DEVICE_NAME" >> $GITHUB_OUTPUT
