@@ -246,7 +246,7 @@ jobs:
             HALF_CORES=1
           fi
           echo "=== 🔄 第二次编译尝试：使用 $HALF_CORES 个核心 / Second compilation attempt: using $HALF_CORES cores ==="
-          if make -j$HALF_CORES V=s; then
+          if make -j$HALF_CORES; then
             echo "✅ 减少并行数编译成功！ / Reduced parallelism compilation successful!"
             COMPILE_METHOD="半核心 / Half-core ($HALF_CORES cores)"
           else
