@@ -31,7 +31,7 @@ env:
   UPLOAD_FIRMWARE: false
   UPLOAD_RELEASE: true
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  CCACHE_MAXSIZE: 2G
+  CCACHE_MAXSIZE: 10G
   TZ: Asia/Shanghai
 
 jobs:
@@ -81,6 +81,17 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-ccache-
           ${{ runner.os }}-immortalwrt-ccache-
+
+    - name: Restore build cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          /workdir/openwrt/build_dir
+          /workdir/openwrt/staging_dir
+        key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-build-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-build-
+          ${{ runner.os }}-immortalwrt-build-
 
     - name: Load custom feeds
       run: |
@@ -154,7 +165,6 @@ jobs:
       if: (env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true') && !cancelled()
       run: |
         echo "📋 整理固件文件... / Organizing firmware files..."
-        # Find the target directory safely
         TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n 1)
         if [ -z "$TARGET_DIR" ]; then
           echo "Error: No target directory found in openwrt/bin/targets"
@@ -163,40 +173,33 @@ jobs:
         echo "Found target directory: $TARGET_DIR"
         cd "$TARGET_DIR"
         rm -rf packages
-        
-        # Generate timestamp for filename modification
+
         TIMESTAMP=$(date +%s)
         echo "⏰ 生成时间戳: $TIMESTAMP / Generated timestamp: $TIMESTAMP"
-        
-        # Rename firmware files to include timestamp
+
         echo "🔄 重命名固件文件添加时间戳... / Renaming firmware files with timestamp..."
         for file in *; do
           if [ -f "$file" ]; then
-            # Extract file extension
             if [[ "$file" == *.img.gz ]]; then
-              # For .img.gz files: openwrt-xxx.img.gz -> openwrt-timestamp-xxx.img.gz
               new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
             elif [[ "$file" == *.tar.gz ]]; then
-              # For .tar.gz files: openwrt-xxx.tar.gz -> openwrt-timestamp-xxx.tar.gz
               new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
             elif [[ "$file" == openwrt-* ]]; then
-              # For other openwrt files
               new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
             else
-              # Keep original name for non-openwrt files
               new_name="$file"
             fi
-            
+
             if [ "$file" != "$new_name" ]; then
               mv "$file" "$new_name"
               echo "✅ $file -> $new_name"
             fi
           fi
         done
-        
+
         echo "📁 重命名后的固件文件列表 / Renamed firmware file list:"
         ls -la
-        
+
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -225,18 +228,3 @@ jobs:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        retain_days: 0
-        keep_minimum_runs: 2
-
-    - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@v0.3.4
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 3
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
