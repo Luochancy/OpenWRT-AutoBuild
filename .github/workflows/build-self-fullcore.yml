@@ -17,8 +17,8 @@ on:
   workflow_dispatch:
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_BRANCH: master
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v24.10.5
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
@@ -38,7 +38,7 @@ jobs:
       
     steps:
     - name: 检出代码 / Checkout Code
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     - name: 初始化编译环境 / Initialize Build Environment
       env:
@@ -65,7 +65,7 @@ jobs:
           libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
           libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
           libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch \
-          pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils \
+          pkgconf python3 python3-pyelftools python3-setuptools qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
           vim wget xmlto xxd zlib1g-dev
         
@@ -201,7 +201,7 @@ jobs:
       
     steps:
     - name: 检出代码 / Checkout Code
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     - name: 恢复OpenWrt源码和配置 / Restore OpenWrt Source and Config
       uses: actions/cache@v4
@@ -320,7 +320,7 @@ jobs:
     
     steps:
     - name: 检出代码 / Checkout Code
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     - name: 下载固件文件 / Download Firmware Files
       if: env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true'
