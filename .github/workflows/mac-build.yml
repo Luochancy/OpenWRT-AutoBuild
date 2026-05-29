@@ -1,0 +1,239 @@
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+#
+# File: .github/workflows/openwrt-bulder.yml
+# Description: Build OpenWrt using GitHub Actions (macOS M1 optimized)
+#
+# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+
+name: OpenWrt Builder
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v24.10.5
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: .config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: false
+  UPLOAD_RELEASE: true
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 10G
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Free up disk space
+      run: |
+        echo "Disk usage before cleanup:"
+        df -h /
+        sudo rm -rf /usr/local/share/boost /usr/local/lib/android 2>/dev/null || true
+        sudo rm -rf /Applications/Xcode_*.app 2>/dev/null || true
+        sudo rm -rf ~/Library/Caches/Homebrew 2>/dev/null || true
+        brew cleanup --prune=all 2>/dev/null || true
+        echo "Disk usage after cleanup:"
+        df -h /
+
+    - name: Install dependencies
+      run: |
+        brew install coreutils findutils gawk gettext gnu-sed \
+          autoconf automake binutils bison cmake flex libtool \
+          openssl pkg-config protobuf texinfo zlib wget xz
+        # Make GNU tools default
+        echo 'export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"' >> ~/.zshrc
+        echo 'export PATH="/usr/local/opt/findutils/libexec/gnubin:$PATH"' >> ~/.zshrc
+        echo 'export PATH="/usr/local/opt/gnu-sed/libexec/gnubin:$PATH"' >> ~/.zshrc
+        echo 'export PATH="/usr/local/opt/gawk/libexec/gnubin:$PATH"' >> ~/.zshrc
+        export PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/opt/findutils/libexec/gnubin:/usr/local/opt/gnu-sed/libexec/gnubin:/usr/local/opt/gawk/libexec/gnubin:$PATH"
+
+    - name: Clone source code
+      run: |
+        df -h $PWD
+        git clone --depth 1 --single-branch $REPO_URL -b $REPO_BRANCH openwrt
+        mkdir -p openwrt/dl "$CCACHE_DIR"
+        ln -sf $GITHUB_WORKSPACE/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: Restore download cache
+      uses: actions/cache@v4
+      with:
+        path: openwrt/dl
+        key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-dl-${{ hashFiles('.config', 'diy-part1.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-dl-
+          ${{ runner.os }}-immortalwrt-dl-
+
+    - name: Restore ccache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-ccache-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-ccache-
+          ${{ runner.os }}-immortalwrt-ccache-
+
+    - name: Restore build cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          openwrt/build_dir
+          openwrt/staging_dir
+        key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-build-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-build-
+          ${{ runner.os }}-immortalwrt-build-
+
+    - name: Load custom feeds
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: Update feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+
+    - name: Install feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds install -a
+
+    - name: Load custom configuration
+      run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Configure ccache
+      run: |
+        cd openwrt
+        grep -q '^CONFIG_CCACHE=y' .config || echo 'CONFIG_CCACHE=y' >> .config
+        mkdir -p "$CCACHE_DIR"
+        ccache -M "$CCACHE_MAXSIZE"
+        ccache -o compression=true
+        ccache -z || true
+
+    - name: Download package
+      id: package
+      run: |
+        cd openwrt
+        make defconfig
+        DOWNLOAD_JOBS=$(( $(sysctl -n hw.logicalcpu) * 2 ))
+        make download -j$DOWNLOAD_JOBS
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Compile the firmware
+      id: compile
+      run: |
+        cd openwrt
+        NPROC=$(sysctl -n hw.logicalcpu)
+        echo "$NPROC thread compile"
+        make -j$NPROC || make -j1 || make -j1 V=s
+        ccache -s || true
+        echo "status=success" >> $GITHUB_OUTPUT
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: Check space usage
+      if: (!cancelled())
+      run: df -h
+
+    - name: Upload bin directory
+      uses: actions/upload-artifact@v4
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      with:
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: openwrt/bin
+
+    - name: 整理固件文件 / Organize Firmware Files
+      id: organize
+      if: (env.UPLOAD_FIRMWARE == 'true' || env.UPLOAD_RELEASE == 'true') && !cancelled()
+      run: |
+        echo "📋 整理固件文件... / Organizing firmware files..."
+        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n 1)
+        if [ -z "$TARGET_DIR" ]; then
+          echo "Error: No target directory found in openwrt/bin/targets"
+          exit 1
+        fi
+        echo "Found target directory: $TARGET_DIR"
+        cd "$TARGET_DIR"
+        rm -rf packages
+
+        TIMESTAMP=$(date +%s)
+        echo "⏰ 生成时间戳: $TIMESTAMP / Generated timestamp: $TIMESTAMP"
+
+        echo "🔄 重命名固件文件添加时间戳... / Renaming firmware files with timestamp..."
+        for file in *; do
+          if [ -f "$file" ]; then
+            if [[ "$file" == *.img.gz ]]; then
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            elif [[ "$file" == *.tar.gz ]]; then
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            elif [[ "$file" == openwrt-* ]]; then
+              new_name=$(echo "$file" | sed "s/^openwrt-/openwrt-${TIMESTAMP}-/")
+            else
+              new_name="$file"
+            fi
+
+            if [ "$file" != "$new_name" ]; then
+              mv "$file" "$new_name"
+              echo "✅ $file -> $new_name"
+            fi
+          fi
+        done
+
+        echo "📁 重命名后的固件文件列表 / Renamed firmware file list:"
+        ls -la
+
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload firmware directory
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      with:
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+        retention-days: 3
+
+    - name: Generate release tag
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        touch release.txt
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
