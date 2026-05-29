@@ -56,6 +56,9 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
+    - name: Clean workspace
+      run: rm -rf /workdir/openwrt
+
     - name: Clone source code
       working-directory: /workdir
       run: |
