@@ -27,7 +27,7 @@ fi
 
 if [ -f "include/version.mk" ]; then
     sed -i "s/RELEASE:=.*/RELEASE:=ImmortalWrt 24.10.5 MINI 2025.v1/" include/version.mk
-    sed -i "s/VERSION_REPO:=.*/VERSION_REPO:=Compiled by Luochancy/" include/version.mk
+    sed -i "s/VERSION_REPO:=.*/VERSION_REPO:=Luochancy/" include/version.mk
 fi
 
 mkdir -p package/base-files/files/etc
