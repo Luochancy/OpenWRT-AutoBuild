@@ -160,15 +160,6 @@ jobs:
         path: ${{ env.CCACHE_DIR }}
         key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-ccache-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
 
-    - name: Save build cache
-      if: always()
-      uses: actions/cache/save@v4
-      with:
-        path: |
-          /workdir/openwrt/build_dir
-          /workdir/openwrt/staging_dir
-        key: ${{ runner.os }}-immortalwrt-${{ env.REPO_BRANCH }}-build-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
-
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
