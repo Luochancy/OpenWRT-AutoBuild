@@ -65,3 +65,6 @@ EOF
 sed -i 's/^root:[^:]*:/root::/' package/base-files/files/etc/shadow
 
 echo "Using official ImmortalWrt x86 sysupgrade support."
+
+# Fix Rust LLVM download 404 - build from source instead
+sed -i 's/--set=llvm.download-ci-llvm=true/--set=llvm.download-ci-llvm=false/' feeds/packages/lang/rust/Makefile
